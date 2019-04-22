@@ -111,7 +111,7 @@
 (defn generation-breed
   [genome1 genome2 number-children]
   (->> (map apply-mutation (shuffle-weights genome1 genome2))
-       (update-in genome1 [:network :weights])))
+       (assoc-in genome1 [:network :weights] )))
 
 (defn shuffle-weights
   [genome1 genome2]
@@ -127,7 +127,10 @@
 
 (defn generation-next
   [genomes]
-  (conj (part1 genomes) (part2 (first genomes)) (part3 genomes)))
+  (let [networks1 (part1 genomes)
+        networks2 (part2 (:network (first genomes)))
+        nb-networks (+ (count networks1)(count networks2))]
+  (concat networks1 networks2 (part3 genomes nb-networks))))
 
 (defn part1
   [genomes]
@@ -135,24 +138,34 @@
 
 (defn part2
   [network]
-  (update-in network [:weights] #(mapv random-clamped %)))
+  (let [result []]
+    (repeatedly (* (:random-behaviour options) (:population options))
+            #(part2-1 network)
+            )
+    )
+)
 
-;; WIP
+(defn part2-1
+  [network]
+  (concat result (update-in network [:weights] #(mapv random-clamped %))))
+
 (defn part3
-  [genomes]
+  [genomes nb-networks]
   (loop [genome1 (first genomes)
          genome2 (first genomes)
+         genome1-tail (rest genomes)
+         genome2-tail genomes
          result []]
-    (if (empty? genome1)
-      (recur genomes (rest genome2) (generate-result result genome1 genome2))
-      (if (>= (count result) (:population options))
+    (if (nil? genome1)
+      (recur (first genomes) (first (rest genome2-tail)) (rest genomes) (rest genome2-tail) (generate-result result genome1 genome2))
+      (if (>= (+ (count result) nb-networks) (:population options))
         result
-        (recur (rest genomes) genome2 (generate-result result genome1 genome2))
+        (recur (first genome1-tail) (first genome2-tail) (rest genome1-tail) genome2-tail  (generate-result result genome1 genome2))
       ))))
 
 (defn generate-result
   [result genome1 genome2]
-  (conj result (map :network (generation-breed genome1 genome2 (get-nb-child))))
+  (conj result (:network (generation-breed genome1 genome2 (get-nb-child))))
   )
 
 (defn get-nb-child
@@ -165,13 +178,18 @@
 (defn generations
   []
   {:generations []
-   :current (generation-create)})
+   :current []})
 
-(defn generation-first
-  []
+(defn generations-first
+  [input hidden output]
+  (let [result []]
+    (repeatedly (:population options)
+                #(concat result (network-perceptron-generation input hidden output))
+                )
+    )
   )
 
-(defn generation-create-next
+(defn generations-create-next
   [generations]
   (conj generations (generation-next (last generations)))
   )
@@ -181,3 +199,22 @@
   (conj generations (generation-add-genome (last generations) genome))
   )
 
+;; SELF
+(defn self-next-generation
+  [generations]
+  (get-next-generation generations)
+  )
+
+(defn get-next-generation
+  [generations]
+  (let [[input hidden output] (:network options)]
+    (if (empty? generations)
+      (generations-first input hidden output)
+      (generations-create-next generations))
+    )
+  )
+
+(defn self-network-score
+  [generations network score]
+  (generation-add-genome generations (genome-create score network))
+  )
