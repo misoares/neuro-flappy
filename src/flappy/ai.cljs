@@ -1,8 +1,8 @@
 (ns flappy.ai)
 
 (def options
-  {:network [1 [1] 1]
-   :population 50
+  {:network [2 [2] 1]
+   :population 3
    :elitism 0.2
    :random-behaviour 0.2
    :mutation-rate 0.1
@@ -24,49 +24,56 @@
 
 ;; get weights
 (defn neuron-populate
+  "Randomly create weights for the n neurons"
   [nb]
   (take nb (repeatedly #(random-clamped))))
 
 (defn neuron-create
+  "Create n neurons"
   [nb]
   {:value 0
    :weights (neuron-populate nb)})
 
 (defn neuron-update
+  "Update the value of a neurons"
   [neuron value]
   {:value value
    :weights (:weights neuron)})
 ;; Layer
 
 (defn layer-populate
+  "Populate a layer withn neurons based on the number of inputs"
   [nb-neurons nb-inputs]
   (take nb-neurons (repeatedly #(neuron-create nb-inputs))))
 
 (defn layer-create
+  "Create layer with n neurons and y inputs"
   [nb-neurons nb-inputs]
   {:neurons (layer-populate nb-neurons nb-inputs)})
 
 ;; Neural network
 (defn network-perceptron-generation
+  "Generate a neural network based on input, hiddens and output"
   [input, hiddens, output]
   (loop [in input
          vals hiddens
          out output
-         result []]
+         result [(layer-create in 0)]]
     (if (empty? vals)
       (conj result (layer-create out in))
-      (recur (first vals) (rest vals) out (conj result (layer-create in (first vals)))))))
+      (recur (first vals) (rest vals) out (conj result (layer-create (first vals) in))))))
 
 ;; TODO: get save
 (defn get-save
   [network]
   ())
 
-;; TODO: set save
+;; TODO: set sav
 (defn set-save
   [save])
 
 (defn neuron-calculation
+  "Calculates the value of the neurons of the current layer taking as input the neurons of the previous layer"
   [previous-layer-neurons current-layer-neuron]
   (->> current-layer-neuron
        (:weights)
@@ -77,12 +84,15 @@
        (neuron-update current-layer-neuron)))
 
 (defn compute-per-neuron
+  "Applies the calculation to all neurons of the current layer"
   [previous-layer-neurons current-layer-neurons]
   (for [neuron current-layer-neurons]
     (neuron-calculation previous-layer-neurons neuron)))
 
 ;; compute
+;;TODO Refactor
 (defn network-compute
+  "Recursively compute the current layer based on the previous layer"
   [layers inputs]
   (let [secound-inputs {:neurons (map neuron-update (:neurons (first layers)) inputs)}
         rest-layers (rest layers)]
@@ -90,42 +100,56 @@
            input secound-inputs
            result [secound-inputs]]
       (if (empty? layer)
-        result
-        (recur (rest layer) (first layer) (conj result (compute-per-neuron (:neurons input) (:neurons (first layer)))))))))
+        (conj (pop result) {:neurons (compute-per-neuron (:neurons (second result)) (:neurons input))})
+        (recur (rest layer) (first layer) (conj result {:neurons (compute-per-neuron (:neurons input) (:neurons (first layer)))}))
+              ))))
 
 (defn network-outputs
+  "Compute the output for an input"
   [layers inputs]
-  (map :value (last (network-compute layers inputs))))
+  (println layers inputs )
+  (->> (network-compute layers inputs)
+       (map :neurons)
+       flatten
+       last
+       :value)
+  )
 
 ;; Genome
 (defn genome-create
+  "Create a genome"
   [score network]
   {:score score
    :network network})
 
 ;; Generation
 (defn generation-add-genome
+  "Add genome to a generation"
   [generation genome]
   (sort-by :score (conj generation genome)))
 
 (defn generation-breed
+  "Breed two genomes by randomly merging them and then mutating the result, and get n childred"
   [genome1 genome2 number-children]
   (->> (map apply-mutation (shuffle-weights genome1 genome2))
        (assoc-in genome1 [:network :weights] )))
 
 (defn shuffle-weights
+  "Creates a new genome by randomly merging 'genetic code' from both genomes"
   [genome1 genome2]
   (let [g2-weights (:weights (:network genome2))
         g1-weights (:weights (:network genome1))]
     (take (count g1-weights) (shuffle (concat g1-weights g2-weights)))))
 
 (defn apply-mutation
+  "Randomly mutates the genomes weights"
   [value]
   (if (<= (Math/random) (:mutation-rate options))
     (- (* (Math/random) (:mutation-range options) 2) (:mutation-range  options))
     value))
 
 (defn generation-next
+  "Creates the next generation based on the current"
   [genomes]
   (let [networks1 (part1 genomes)
         networks2 (part2 (:network (first genomes)))
@@ -140,13 +164,13 @@
   [network]
   (let [result []]
     (repeatedly (* (:random-behaviour options) (:population options))
-            #(part2-1 network)
+            #(part2-1 network result)
             )
     )
 )
 
 (defn part2-1
-  [network]
+  [network result]
   (concat result (update-in network [:weights] #(mapv random-clamped %))))
 
 (defn part3
